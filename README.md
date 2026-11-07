@@ -8,6 +8,7 @@ Validação e análise exploratória de qualidade de dados do dataset de defeito
 LevelThreeRepo/
 ├── .gitignore
 ├── README.md
+├── docker-compose.yml
 └── projeto-tema2/
     ├── data/
     │   └── defects_data.csv        # dataset de defeitos
@@ -96,6 +97,16 @@ python -m pytest
 ```
 
 ## Docker
+
+Com Docker Compose, a partir da raiz do repositório:
+
+```
+docker compose up --build
+```
+
+As saídas aparecem em `projeto-tema2/output/`.
+
+Ou manualmente:
 
 ```
 docker build -t levelthree-pipeline projeto-tema2
