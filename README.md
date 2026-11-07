@@ -7,58 +7,67 @@ Validação e análise exploratória de qualidade de dados do dataset de defeito
 ```
 LevelThreeRepo/
 ├── .gitignore
+├── .dockerignore
+├── README.md
+├── docker-compose.yml
+├── requirements.txt                # dependências (inclui pytest)
 └── projeto-tema2/
     ├── data/
-    │   └── manufacturing_defect_dataset.csv
+    │   └── defects_data.csv        # dataset de defeitos
+    ├── figs/
+    │   └── falhas_por_categoria_mes.png
     ├── src/
-    │   └── validate_data.py
-    ├── requirements.txt
-    └── README.md
+    │   ├── __init__.py
+    │   ├── validate_data.py        # validação de qualidade dos dados
+    │   ├── falhas_mensais.py       # gráfico de falhas por categoria, mês a mês
+    │   └── pipeline.py             # pipeline (executado pelo Docker)
+    ├── tests/
+    │   └── test_validate_data.py
+    └── Dockerfile
 ```
 
 ## Dataset
 
-`data/manufacturing_defect_dataset.csv`: 3.240 linhas e 17 colunas (12 `float64`, 5 `int64`), sem valores nulos e sem linhas duplicadas.
+`data/defects_data.csv`: 1.000 registros de defeitos e 8 colunas, sem valores nulos e sem linhas duplicadas. Período: 01/01/2024 a 30/06/2024.
 
-Variável alvo: `DefectStatus` (1 = defeito, 0 = sem defeito). Distribuição: 2.723 registros com `1` e 517 com `0`.
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `defect_id` | int | Identificador do defeito |
+| `product_id` | int | Identificador do produto (1 a 100) |
+| `defect_type` | texto | `Structural` (352), `Functional` (339), `Cosmetic` (309) |
+| `defect_date` | data (M/D/AAAA) | Data do registro |
+| `defect_location` | texto | `Surface` (353), `Component` (326), `Internal` (321) |
+| `severity` | texto | `Minor` (358), `Critical` (333), `Moderate` (309) |
+| `inspection_method` | texto | `Manual Testing` (352), `Visual Inspection` (351), `Automated Testing` (297) |
+| `repair_cost` | float | Custo do reparo (10,22 a 999,64) |
 
-| Grupo | Colunas |
-|---|---|
-| Produção | `ProductionVolume`, `ProductionCost` |
-| Fornecimento | `SupplierQuality`, `DeliveryDelay` |
-| Qualidade | `DefectRate`, `QualityScore` |
-| Manutenção e paradas | `MaintenanceHours`, `DowntimePercentage` |
-| Estoque | `InventoryTurnover`, `StockoutRate` |
-| Trabalho e segurança | `WorkerProductivity`, `SafetyIncidents` |
-| Energia | `EnergyConsumption`, `EnergyEfficiency` |
-| Manufatura aditiva | `AdditiveProcessTime`, `AdditiveMaterialCost` |
-| Alvo | `DefectStatus` |
+## Scripts
 
-## Script
+- `src/validate_data.py`: lê o CSV e imprime no terminal o resumo por coluna (tipo, nulos, % de nulos, únicos e duplicados), estatísticas das colunas numéricas (mínimo, máximo, média, desvio padrão, negativos, zeros e outliers pela regra do IQR) e as colunas constantes. Não altera o dataset.
+- `src/falhas_mensais.py`: conta as falhas por `defect_type` em cada mês e salva o gráfico em `figs/falhas_por_categoria_mes.png`.
+- `src/pipeline.py`: lê e limpa o dataset, gera a tabela-resumo e dois gráficos em `output/`:
+  - `tabela_resumo.csv`: por `defect_type`, registros, % do total, custo médio, custo total e % de defeitos críticos.
+  - `grafico_1.png`: custo médio de reparo por severidade.
+  - `grafico_2.png`: % de defeitos críticos por método de inspeção.
 
-`src/validate_data.py` lê o CSV e imprime no terminal:
+### Decisões de limpeza (pipeline)
 
-1. Resumo por coluna: tipo, nulos, % de nulos, valores únicos e valores repetidos.
-2. Estatísticas das colunas numéricas: mínimo, máximo, média, desvio padrão, negativos, zeros e outliers pela regra do IQR (1,5 × IQR).
-3. Colunas de texto: valores mais frequentes, espaços nas pontas, variações de maiúsculas/minúsculas e placeholders (`NA`, `null`, `?`, `-` etc.).
-4. Colunas que deveriam ser numéricas mas contêm texto.
-5. Colunas constantes.
+1. **Outliers:** checados pelo IQR só em `repair_cost` (ids não são medidas). Nenhuma linha é removida, pois custos altos são reparos reais.
+2. **Datas:** `defect_date` é convertida de texto `M/D/AAAA` para data; datas inválidas são descartadas e é criada a coluna `mes`.
+3. **Categorias:** textos sem espaços nas pontas, `severity` ordenada (`Minor` < `Moderate` < `Critical`) e coluna `is_critical` (1 = crítico).
 
-O script não altera o dataset nem gera arquivos.
-
-## Requisitos
-
-- Python 3.10 ou superior
-- pandas
+Os scripts usam caminhos relativos ao próprio arquivo, então funcionam a partir de qualquer pasta.
 
 ## Instalação
+
+Requisito: Python 3.10 ou superior. Comandos a partir da raiz do repositório.
 
 Windows:
 
 ```
 python -m venv venv
 venv\Scripts\activate
-pip install pandas
+pip install -r requirements.txt
 ```
 
 macOS/Linux:
@@ -66,7 +75,7 @@ macOS/Linux:
 ```
 python3 -m venv venv
 source venv/bin/activate
-pip install pandas
+pip install -r requirements.txt
 ```
 
 ## Uso
@@ -75,6 +84,33 @@ A partir da pasta `projeto-tema2`:
 
 ```
 python src/validate_data.py
+python src/falhas_mensais.py
+python src/pipeline.py
 ```
 
-O script usa caminhos relativos ao próprio arquivo, então também funciona se executado de outra pasta.
+## Testes
+
+A partir da pasta `projeto-tema2`:
+
+```
+python -m pytest
+```
+
+## Docker
+
+Com Docker Compose, a partir da raiz do repositório:
+
+```
+docker compose up --build
+```
+
+As saídas aparecem em `projeto-tema2/output/`.
+
+Ou manualmente, também a partir da raiz:
+
+```
+docker build -f projeto-tema2/Dockerfile -t levelthree-pipeline .
+docker run --rm -v "$(pwd)/projeto-tema2/data:/app/data" -v "$(pwd)/projeto-tema2/output:/app/output" levelthree-pipeline
+```
+
+O build usa a raiz como contexto para enxergar o `requirements.txt`. Os dados não entram na imagem; são montados por volume em `/app/data`.

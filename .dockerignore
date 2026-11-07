@@ -1,0 +1,10 @@
+# O contexto de build e a raiz do repositorio (ver docker-compose.yml).
+# Ignora tudo e libera so o que a imagem precisa: o requirements e o codigo.
+# Dados, saidas, testes, venv e .git ficam de fora; os dados chegam por volume.
+*
+!requirements.txt
+!projeto-tema2/src/
+
+# Mesmo dentro de src/, caches nao entram
+**/__pycache__
+**/*.pyc

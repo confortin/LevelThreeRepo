@@ -4,7 +4,9 @@
 # Saidas : projeto-tema2/output (tabela_resumo.csv, grafico_1.png, grafico_2.png)
 services:
   pipeline:
-    build: ./projeto-tema2
+    build:
+      context: .                              # raiz: precisa enxergar o requirements.txt
+      dockerfile: projeto-tema2/Dockerfile
     image: levelthree-pipeline
     volumes:
       - ./projeto-tema2/data:/app/data:ro

@@ -146,7 +146,8 @@ def estilizar(ax):
 
 def titular(fig, texto):
     """Titulo (a conclusao) em ate duas linhas, alinhado a esquerda."""
-    fig.suptitle(textwrap.fill(texto, 58), x=0.05, ha="left", fontsize=14,
+    # "\$" evita que o matplotlib trate o texto entre dois $ como formula
+    fig.suptitle(textwrap.fill(texto, 58).replace("$", r"\$"), x=0.05, ha="left", fontsize=14,
                  fontweight="bold", color=TEXTO)
 
 
