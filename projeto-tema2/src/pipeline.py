@@ -1,12 +1,14 @@
-"""Pipeline: leitura, limpeza, tabela-resumo e graficos do dataset de defeitos.
+""""Pipeline: leitura, limpeza, tabela-resumo e graficos do dataset de defeitos.
 
 Uso (a partir de projeto-tema2):
     python src/pipeline.py
 
-Entrada : data/manufacturing_defect_dataset.csv
+Entrada : data/defects_data.csv
 Saidas  : output/tabela_resumo.csv, output/grafico_1.png, output/grafico_2.png
+
+Os diagnosticos (nulos, duplicados, negativos, outliers) vem de validate_data.py.
+Este arquivo decide o que fazer com eles (limpeza) e gera as saidas.
 """
-import re
 import textwrap
 from pathlib import Path
 
@@ -16,14 +18,37 @@ matplotlib.use("Agg")  # sem interface grafica: so gera arquivos (funciona no Do
 import matplotlib.pyplot as plt
 import pandas as pd
 
+try:  # importado como pacote (pytest) ou executado como script (python src/pipeline.py)
+    from src.validate_data import (
+        check_missing_and_duplicates,
+        check_negative_values,
+        load_data,
+    )
+except ImportError:
+    from validate_data import (
+        check_missing_and_duplicates,
+        check_negative_values,
+        load_data,
+    )
+
 BASE_DIR = Path(__file__).resolve().parent.parent
-CSV_PATH = BASE_DIR / "data" / "manufacturing_defect_dataset.csv"
 OUT_DIR = BASE_DIR / "output"
 
-# Colunas onde zero e um valor legitimo (decisao 2 do README)
-COLUNAS_ZERO_VALIDO = ["DeliveryDelay", "MaintenanceHours", "SafetyIncidents"]
+COLUNAS_ESPERADAS = [
+    "defect_id", "product_id", "defect_type", "defect_date",
+    "defect_location", "severity", "inspection_method", "repair_cost",
+]
+COLUNAS_TEXTO = ["defect_type", "defect_location", "severity", "inspection_method"]
 
-# Cores (paleta de referencia): destaque em azul, resto em cinza neutro
+# Ordem natural de severidade (se os valores forem texto conhecido)
+ORDEM_SEVERIDADE = {
+    "low": 0, "minor": 0, "baixa": 0,
+    "medium": 1, "moderate": 1, "media": 1, "média": 1,
+    "high": 2, "major": 2, "alta": 2,
+    "critical": 3, "critica": 3, "crítica": 3,
+}
+
+# Cores: destaque em azul, resto em cinza neutro
 AZUL = "#2a78d6"
 CINZA = "#b5b4ad"
 TEXTO = "#0b0b0b"
@@ -31,67 +56,82 @@ TEXTO_SEC = "#52514e"
 FUNDO = "#fcfcfb"
 
 
-def para_snake_case(nome):
-    """DefectStatus -> defect_status."""
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", nome).lower()
-
-
 def carregar():
-    if not CSV_PATH.exists():
-        raise FileNotFoundError(
-            f"{CSV_PATH} nao encontrado. Coloque manufacturing_defect_dataset.csv "
-            "na pasta data/ (ou monte a pasta como volume em /app/data no Docker)."
+    df = load_data()
+    faltando = [c for c in COLUNAS_ESPERADAS if c not in df.columns]
+    if faltando:
+        raise KeyError(
+            f"Colunas ausentes no CSV: {faltando}. Encontradas: {list(df.columns)}"
         )
-    return pd.read_csv(CSV_PATH)
+    return df
 
 
 def limpar(df):
-    """Aplica as tres decisoes de limpeza documentadas no README."""
+    """Aplica as decisoes de limpeza (documentar no README)."""
     df = df.copy()
     print(f"Linhas lidas: {len(df)}")
 
-    # Checagem previa: nulos e linhas duplicadas (o README informa que nao ha)
-    print(f"Nulos: {int(df.isna().sum().sum())} | Linhas duplicadas: {int(df.duplicated().sum())}")
+    # Diagnostico previo (validate_data.py)
+    print("\nDiagnostico por coluna:")
+    print(check_missing_and_duplicates(df).to_string())
+    print(
+        f"\nNulos: {int(df.isna().sum().sum())} | "
+        f"Linhas duplicadas: {int(df.duplicated().sum())} | "
+        f"defect_id repetidos: {int(df['defect_id'].duplicated().sum())}"
+    )
     df = df.drop_duplicates().dropna()
 
-    # Decisao 1: outliers pelo IQR, ignorando colunas binarias (0/1).
-    # Nenhuma linha e removida: o IQR marcaria o grupo minoritario do alvo.
-    num = df.select_dtypes(include="number")
-    binarias = [c for c in num.columns if set(num[c].unique()) <= {0, 1}]
-    continuas = [c for c in num.columns if c not in binarias]
-    q1, q3 = num[continuas].quantile(0.25), num[continuas].quantile(0.75)
-    iqr = q3 - q1
-    outliers = ((num[continuas] < q1 - 1.5 * iqr) | (num[continuas] > q3 + 1.5 * iqr)).sum()
-    print(f"[1] Colunas binarias ignoradas no IQR: {binarias}")
-    print(f"[1] Outliers (IQR) nas demais colunas: {int(outliers.sum())} -> nenhuma linha removida")
+    # Decisao 1: data e custo precisam ser validos
+    antes = len(df)
+    df["defect_date"] = pd.to_datetime(df["defect_date"], errors="coerce")
+    df["repair_cost"] = pd.to_numeric(df["repair_cost"], errors="coerce")
+    df = df.dropna(subset=["defect_date", "repair_cost"])
+    print(f"\n[1] Linhas com data ou custo invalido removidas: {antes - len(df)}")
 
-    # Decisao 2: zeros sao validos nessas colunas, nada e imputado ou removido.
-    zeros = {c: int((df[c] == 0).sum()) for c in COLUNAS_ZERO_VALIDO}
-    print(f"[2] Zeros mantidos como valores validos: {zeros}")
+    # Decisao 2: custo negativo e impossivel (removido); zero e valido (mantido)
+    stats = check_negative_values(df[["repair_cost"]])
+    print(stats.to_string())
+    negativos = int((df["repair_cost"] < 0).sum())
+    zeros = int((df["repair_cost"] == 0).sum())
+    df = df[df["repair_cost"] >= 0]
+    print(f"[2] Custos negativos removidos: {negativos} | zeros mantidos: {zeros}")
 
-    # Decisao 3: nomes em snake_case e rotulo legivel para o alvo.
-    df = df.rename(columns={c: para_snake_case(c) for c in df.columns})
-    df["defect_label"] = df["defect_status"].map({1: "Defeito", 0: "Sem defeito"})
-    print("[3] Colunas renomeadas para snake_case e coluna defect_label criada")
+    # Decisao 3: outliers (IQR) so sao reportados; custos altos sao reais
+    print(f"[3] Outliers de repair_cost (IQR) mantidos: {int(stats.loc['repair_cost', 'outliers_IQR'])}")
+
+    # Decisao 4: remove espacos extras nas colunas de texto
+    for c in COLUNAS_TEXTO:
+        if pd.api.types.is_string_dtype(df[c]):
+            df[c] = df[c].str.strip()
+    print("[4] Espacos extras removidos das colunas de texto")
 
     return df
 
 
 def tabela_resumo(df):
-    """Contagem, participacao e medias das principais variaveis por grupo."""
-    colunas = [
-        "defect_rate", "quality_score", "maintenance_hours", "production_volume",
-        "delivery_delay", "safety_incidents", "supplier_quality", "downtime_percentage",
+    """Quantidade, participacao e custo de reparo por tipo de defeito."""
+    resumo = df.groupby("defect_type")["repair_cost"].agg(
+        defeitos="count", custo_medio="mean", custo_mediano="median", custo_total="sum"
+    ).round(2)
+    resumo.insert(1, "pct_defeitos", (resumo["defeitos"] / len(df) * 100).round(1))
+    resumo = resumo.sort_values("defeitos", ascending=False)
+    resumo.loc["Total"] = [
+        len(df), 100.0,
+        round(df["repair_cost"].mean(), 2),
+        round(df["repair_cost"].median(), 2),
+        round(df["repair_cost"].sum(), 2),
     ]
-    resumo = df.groupby("defect_label")[colunas].mean().round(2)
-    resumo.insert(0, "pecas", df["defect_label"].value_counts())
-    resumo.insert(1, "pct_pecas", (df["defect_label"].value_counts(normalize=True) * 100).round(1))
-    total = df[colunas].mean().round(2)
-    total["pecas"] = len(df)
-    total["pct_pecas"] = 100.0
-    resumo.loc["Total"] = total[resumo.columns]
-    resumo["pecas"] = resumo["pecas"].astype(int)
+    resumo["defeitos"] = resumo["defeitos"].astype(int)
     return resumo
+
+
+def ordenar_severidade(serie):
+    """Ordena por severidade natural; se nao reconhecer os valores, ordem alfabetica/numerica."""
+    chaves = [ORDEM_SEVERIDADE.get(str(i).strip().lower()) for i in serie.index]
+    if all(k is not None for k in chaves):
+        ordem = sorted(range(len(chaves)), key=lambda i: chaves[i])
+        return serie.iloc[ordem]
+    return serie.sort_index()
 
 
 def estilizar(ax):
@@ -110,36 +150,28 @@ def titular(fig, texto):
                  fontweight="bold", color=TEXTO)
 
 
-def barras(ax, rotulos, valores, cores):
-    barras_ = ax.bar(rotulos, valores, color=cores, width=0.62)
-    for b, v in zip(barras_, valores):
-        ax.text(b.get_x() + b.get_width() / 2, v + 1.2, f"{v:.0f}%",
+def barras(ax, rotulos, valores, cores, fmt):
+    rotulos = [textwrap.fill(str(r), 12) for r in rotulos]
+    rects = ax.bar(rotulos, valores, color=cores, width=0.62)
+    topo = max(valores)
+    for b, v in zip(rects, valores):
+        ax.text(b.get_x() + b.get_width() / 2, v + topo * 0.02, fmt(v),
                 ha="center", va="bottom", fontsize=11, color=TEXTO)
-    ax.set_ylim(0, 110)
-    ax.set_yticks([0, 25, 50, 75, 100])
-    ax.set_yticklabels([f"{t}%" for t in [0, 25, 50, 75, 100]])
+    ax.set_ylim(0, topo * 1.15)
     estilizar(ax)
 
 
 def grafico_1(df):
-    """Taxa de defeito por faixa de defect_rate."""
-    faixas = pd.cut(df["defect_rate"], [0, 1, 2, 3, 4, 5],
-                    labels=["0-1", "1-2", "2-3", "3-4", "4-5"])
-    taxa = df.groupby(faixas, observed=True)["defect_status"].mean() * 100
-    abaixo = df.loc[df["defect_rate"] <= 3, "defect_status"].mean() * 100
-    acima = df.loc[df["defect_rate"] > 3, "defect_status"].mean() * 100
+    """Quantidade de defeitos por tipo."""
+    cont = df["defect_type"].value_counts()
+    top, pct = cont.index[0], cont.iloc[0] / len(df) * 100
 
     fig, ax = plt.subplots(figsize=(9, 5.5), facecolor=FUNDO)
-    cores = [CINZA if f in ("0-1", "1-2", "2-3") else AZUL for f in taxa.index]
-    barras(ax, taxa.index.astype(str), taxa.values, cores)
-    ax.set_xlabel("Faixa de defect_rate (%)", color=TEXTO_SEC)
-    ax.set_ylabel("Peças com defeito", color=TEXTO_SEC)
-    if acima > abaixo:
-        titulo = (f"Acima de 3% de defect_rate, {acima:.0f}% das peças têm defeito "
-                  f"(contra {abaixo:.0f}% abaixo)")
-    else:
-        titulo = (f"Taxa de defeito não sobe com defect_rate: {acima:.0f}% acima de 3% "
-                  f"e {abaixo:.0f}% abaixo")
+    cores = [AZUL if i == 0 else CINZA for i in range(len(cont))]
+    barras(ax, cont.index, cont.values, cores, lambda v: f"{v:,.0f}")
+    ax.set_xlabel("Tipo de defeito", color=TEXTO_SEC)
+    ax.set_ylabel("Quantidade de defeitos", color=TEXTO_SEC)
+    titulo = f"{top} é o tipo de defeito mais frequente: {pct:.0f}% dos registros"
     titular(fig, titulo)
     fig.tight_layout(rect=(0, 0, 1, 0.88))
     fig.savefig(OUT_DIR / "grafico_1.png", dpi=150, facecolor=FUNDO)
@@ -148,20 +180,22 @@ def grafico_1(df):
 
 
 def grafico_2(df):
-    """Taxa de defeito por nivel de atraso de entrega."""
-    taxa = df.groupby("delivery_delay")["defect_status"].mean() * 100
-    menor, maior = taxa.min(), taxa.max()
+    """Custo medio de reparo por severidade."""
+    custo = ordenar_severidade(df.groupby("severity")["repair_cost"].mean())
+    maior_i, menor_i = custo.idxmax(), custo.idxmin()
+    maior, menor = custo.max(), custo.min()
 
     fig, ax = plt.subplots(figsize=(9, 5.5), facecolor=FUNDO)
-    barras(ax, taxa.index.astype(str), taxa.values, [AZUL] * len(taxa))
-    ax.set_xlabel("Atraso de entrega (delivery_delay, dias)", color=TEXTO_SEC)
-    ax.set_ylabel("Peças com defeito", color=TEXTO_SEC)
-    if maior - menor <= 5:
-        titulo = (f"O atraso de entrega não muda a taxa de defeitos: "
-                  f"ela fica entre {menor:.0f}% e {maior:.0f}% em todos os níveis")
+    cores = [AZUL if i == maior_i else CINZA for i in custo.index]
+    barras(ax, custo.index.astype(str), custo.values, cores, lambda v: f"{v:,.0f}")
+    ax.set_xlabel("Severidade", color=TEXTO_SEC)
+    ax.set_ylabel("Custo médio de reparo", color=TEXTO_SEC)
+    if menor > 0 and maior / menor >= 1.2:
+        titulo = (f"Severidade {maior_i} tem o maior custo médio de reparo: "
+                  f"{maior:,.0f} (contra {menor:,.0f} em {menor_i})")
     else:
-        titulo = (f"A taxa de defeitos varia de {menor:.0f}% a {maior:.0f}% "
-                  "conforme o atraso de entrega")
+        titulo = (f"O custo médio de reparo é parecido entre severidades: "
+                  f"de {menor:,.0f} a {maior:,.0f}")
     titular(fig, titulo)
     fig.tight_layout(rect=(0, 0, 1, 0.88))
     fig.savefig(OUT_DIR / "grafico_2.png", dpi=150, facecolor=FUNDO)
