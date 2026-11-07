@@ -5,7 +5,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 def load_data():
-    return pd.read_csv(BASE_DIR / "data" / "manufacturing_defect_dataset.csv")
+    return pd.read_csv(BASE_DIR / "data" / "defects_data.csv")
 
 
 def check_missing_and_duplicates(df):

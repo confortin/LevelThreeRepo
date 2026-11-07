@@ -7,58 +7,56 @@ Validação e análise exploratória de qualidade de dados do dataset de defeito
 ```
 LevelThreeRepo/
 ├── .gitignore
+├── README.md
 └── projeto-tema2/
     ├── data/
-    │   └── manufacturing_defect_dataset.csv
+    │   └── defects_data.csv        # dataset de defeitos
+    ├── figs/
+    │   └── falhas_por_categoria_mes.png
     ├── src/
-    │   └── validate_data.py
-    ├── requirements.txt
-    └── README.md
+    │   ├── __init__.py
+    │   ├── validate_data.py        # validação de qualidade dos dados
+    │   ├── falhas_mensais.py       # gráfico de falhas por categoria, mês a mês
+    │   └── pipeline.py             # pipeline (executado pelo Docker)
+    ├── tests/
+    │   └── test_validate_data.py
+    ├── Dockerfile
+    ├── .dockerignore
+    └── requirements.txt
 ```
 
 ## Dataset
 
-`data/manufacturing_defect_dataset.csv`: 3.240 linhas e 17 colunas (12 `float64`, 5 `int64`), sem valores nulos e sem linhas duplicadas.
+`data/defects_data.csv`: 1.000 registros de defeitos e 8 colunas, sem valores nulos e sem linhas duplicadas. Período: 01/01/2024 a 30/06/2024.
 
-Variável alvo: `DefectStatus` (1 = defeito, 0 = sem defeito). Distribuição: 2.723 registros com `1` e 517 com `0`.
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `defect_id` | int | Identificador do defeito |
+| `product_id` | int | Identificador do produto (1 a 100) |
+| `defect_type` | texto | `Structural` (352), `Functional` (339), `Cosmetic` (309) |
+| `defect_date` | data (M/D/AAAA) | Data do registro |
+| `defect_location` | texto | `Surface` (353), `Component` (326), `Internal` (321) |
+| `severity` | texto | `Minor` (358), `Critical` (333), `Moderate` (309) |
+| `inspection_method` | texto | `Manual Testing` (352), `Visual Inspection` (351), `Automated Testing` (297) |
+| `repair_cost` | float | Custo do reparo (10,22 a 999,64) |
 
-| Grupo | Colunas |
-|---|---|
-| Produção | `ProductionVolume`, `ProductionCost` |
-| Fornecimento | `SupplierQuality`, `DeliveryDelay` |
-| Qualidade | `DefectRate`, `QualityScore` |
-| Manutenção e paradas | `MaintenanceHours`, `DowntimePercentage` |
-| Estoque | `InventoryTurnover`, `StockoutRate` |
-| Trabalho e segurança | `WorkerProductivity`, `SafetyIncidents` |
-| Energia | `EnergyConsumption`, `EnergyEfficiency` |
-| Manufatura aditiva | `AdditiveProcessTime`, `AdditiveMaterialCost` |
-| Alvo | `DefectStatus` |
+## Scripts
 
-## Script
+- `src/validate_data.py`: lê o CSV e imprime no terminal o resumo por coluna (tipo, nulos, % de nulos, únicos e duplicados), estatísticas das colunas numéricas (mínimo, máximo, média, desvio padrão, negativos, zeros e outliers pela regra do IQR) e as colunas constantes. Não altera o dataset.
+- `src/falhas_mensais.py`: conta as falhas por `defect_type` em cada mês e salva o gráfico em `figs/falhas_por_categoria_mes.png`.
 
-`src/validate_data.py` lê o CSV e imprime no terminal:
-
-1. Resumo por coluna: tipo, nulos, % de nulos, valores únicos e valores repetidos.
-2. Estatísticas das colunas numéricas: mínimo, máximo, média, desvio padrão, negativos, zeros e outliers pela regra do IQR (1,5 × IQR).
-3. Colunas de texto: valores mais frequentes, espaços nas pontas, variações de maiúsculas/minúsculas e placeholders (`NA`, `null`, `?`, `-` etc.).
-4. Colunas que deveriam ser numéricas mas contêm texto.
-5. Colunas constantes.
-
-O script não altera o dataset nem gera arquivos.
-
-## Requisitos
-
-- Python 3.10 ou superior
-- pandas
+Os scripts usam caminhos relativos ao próprio arquivo, então funcionam a partir de qualquer pasta.
 
 ## Instalação
+
+Requisito: Python 3.10 ou superior.
 
 Windows:
 
 ```
 python -m venv venv
 venv\Scripts\activate
-pip install pandas
+pip install -r projeto-tema2/requirements.txt
 ```
 
 macOS/Linux:
@@ -66,7 +64,7 @@ macOS/Linux:
 ```
 python3 -m venv venv
 source venv/bin/activate
-pip install pandas
+pip install -r projeto-tema2/requirements.txt
 ```
 
 ## Uso
@@ -75,6 +73,22 @@ A partir da pasta `projeto-tema2`:
 
 ```
 python src/validate_data.py
+python src/falhas_mensais.py
 ```
 
-O script usa caminhos relativos ao próprio arquivo, então também funciona se executado de outra pasta.
+## Testes
+
+A partir da pasta `projeto-tema2`:
+
+```
+python -m pytest
+```
+
+## Docker
+
+```
+docker build -t levelthree-pipeline projeto-tema2
+docker run --rm -v "$(pwd)/projeto-tema2/data:/app/data" levelthree-pipeline
+```
+
+Os dados não entram na imagem; são montados por volume em `/app/data`.
