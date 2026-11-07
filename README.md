@@ -44,6 +44,16 @@ LevelThreeRepo/
 
 - `src/validate_data.py`: lê o CSV e imprime no terminal o resumo por coluna (tipo, nulos, % de nulos, únicos e duplicados), estatísticas das colunas numéricas (mínimo, máximo, média, desvio padrão, negativos, zeros e outliers pela regra do IQR) e as colunas constantes. Não altera o dataset.
 - `src/falhas_mensais.py`: conta as falhas por `defect_type` em cada mês e salva o gráfico em `figs/falhas_por_categoria_mes.png`.
+- `src/pipeline.py`: lê e limpa o dataset, gera a tabela-resumo e dois gráficos em `output/`:
+  - `tabela_resumo.csv`: por `defect_type`, registros, % do total, custo médio, custo total e % de defeitos críticos.
+  - `grafico_1.png`: custo médio de reparo por severidade.
+  - `grafico_2.png`: % de defeitos críticos por método de inspeção.
+
+### Decisões de limpeza (pipeline)
+
+1. **Outliers:** checados pelo IQR só em `repair_cost` (ids não são medidas). Nenhuma linha é removida, pois custos altos são reparos reais.
+2. **Datas:** `defect_date` é convertida de texto `M/D/AAAA` para data; datas inválidas são descartadas e é criada a coluna `mes`.
+3. **Categorias:** textos sem espaços nas pontas, `severity` ordenada (`Minor` < `Moderate` < `Critical`) e coluna `is_critical` (1 = crítico).
 
 Os scripts usam caminhos relativos ao próprio arquivo, então funcionam a partir de qualquer pasta.
 
@@ -74,6 +84,7 @@ A partir da pasta `projeto-tema2`:
 ```
 python src/validate_data.py
 python src/falhas_mensais.py
+python src/pipeline.py
 ```
 
 ## Testes
