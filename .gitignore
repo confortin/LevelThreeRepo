@@ -6,4 +6,7 @@ __pycache__/
 *.pyc
 .env
 *.db
+output/__pycache__/
+*.pyc
+.venv/
 output/
