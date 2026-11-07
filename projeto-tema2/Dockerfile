@@ -1,5 +1,6 @@
 # Imagem do pipeline de defeitos de manufatura.
-# Contexto de build: a pasta projeto-tema2 (docker build -t levelthree-pipeline projeto-tema2)
+# Contexto de build: a raiz do repositorio, onde fica o requirements.txt
+#   docker build -f projeto-tema2/Dockerfile -t levelthree-pipeline .
 FROM python:3.12-slim
 
 # Sem .pyc, logs sem buffer e matplotlib sem interface grafica (gera so arquivos)
@@ -14,7 +15,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # So o codigo entra na imagem; os dados entram por volume em /app/data
-COPY src/ ./src/
+COPY projeto-tema2/src/ ./src/
 RUN mkdir -p /app/data /app/output
 
 CMD ["python", "src/pipeline.py"]

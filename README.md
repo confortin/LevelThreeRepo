@@ -7,8 +7,10 @@ Validação e análise exploratória de qualidade de dados do dataset de defeito
 ```
 LevelThreeRepo/
 ├── .gitignore
+├── .dockerignore
 ├── README.md
 ├── docker-compose.yml
+├── requirements.txt                # dependências (inclui pytest)
 └── projeto-tema2/
     ├── data/
     │   └── defects_data.csv        # dataset de defeitos
@@ -21,9 +23,7 @@ LevelThreeRepo/
     │   └── pipeline.py             # pipeline (executado pelo Docker)
     ├── tests/
     │   └── test_validate_data.py
-    ├── Dockerfile
-    ├── .dockerignore
-    └── requirements.txt
+    └── Dockerfile
 ```
 
 ## Dataset
@@ -60,14 +60,14 @@ Os scripts usam caminhos relativos ao próprio arquivo, então funcionam a parti
 
 ## Instalação
 
-Requisito: Python 3.10 ou superior.
+Requisito: Python 3.10 ou superior. Comandos a partir da raiz do repositório.
 
 Windows:
 
 ```
 python -m venv venv
 venv\Scripts\activate
-pip install -r projeto-tema2/requirements.txt
+pip install -r requirements.txt
 ```
 
 macOS/Linux:
@@ -75,7 +75,7 @@ macOS/Linux:
 ```
 python3 -m venv venv
 source venv/bin/activate
-pip install -r projeto-tema2/requirements.txt
+pip install -r requirements.txt
 ```
 
 ## Uso
@@ -106,11 +106,11 @@ docker compose up --build
 
 As saídas aparecem em `projeto-tema2/output/`.
 
-Ou manualmente:
+Ou manualmente, também a partir da raiz:
 
 ```
-docker build -t levelthree-pipeline projeto-tema2
-docker run --rm -v "$(pwd)/projeto-tema2/data:/app/data" levelthree-pipeline
+docker build -f projeto-tema2/Dockerfile -t levelthree-pipeline .
+docker run --rm -v "$(pwd)/projeto-tema2/data:/app/data" -v "$(pwd)/projeto-tema2/output:/app/output" levelthree-pipeline
 ```
 
-Os dados não entram na imagem; são montados por volume em `/app/data`.
+O build usa a raiz como contexto para enxergar o `requirements.txt`. Os dados não entram na imagem; são montados por volume em `/app/data`.
