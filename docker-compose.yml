@@ -1,0 +1,11 @@
+# Roda o pipeline do projeto-tema2 com um comando so:
+#   docker compose up --build
+# Entrada: projeto-tema2/data (somente leitura)
+# Saidas : projeto-tema2/output (tabela_resumo.csv, grafico_1.png, grafico_2.png)
+services:
+  pipeline:
+    build: ./projeto-tema2
+    image: levelthree-pipeline
+    volumes:
+      - ./projeto-tema2/data:/app/data:ro
+      - ./projeto-tema2/output:/app/output
